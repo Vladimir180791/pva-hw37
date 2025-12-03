@@ -13,10 +13,19 @@ class TestDataGenerator:
             "email": self.fake.email(),
             "first_name": self.fake.first_name(),
             "last_name": self.fake.last_name(),
-            "zip_code": self.fake.zipcode()
+            "zip_code": self.fake.zipcode(),
+            "address": self.fake.address()
         }
-        self.logger.info(f"Generated test user: {user['username']}")
+        self.logger.info(f"Generated test user: {user['first_name']} {user['last_name']}")
         return user
+    
+    def generate_checkout_info(self):
+        """Generate checkout information specifically for checkout tests"""
+        return {
+            "first_name": self.fake.first_name(),
+            "last_name": self.fake.last_name(),
+            "postal_code": self.fake.zipcode()
+        }
     
     def generate_product_data(self):
         return {
