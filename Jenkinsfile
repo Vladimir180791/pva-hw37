@@ -64,7 +64,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: "*/${params.BRANCH}"]],
                     userRemoteConfigs: [[
-                        url: https://github.com/Vladimir180791/pwa-hw37.git,
+                        url: 'https://github.com/Vladimir180791/pwa-hw37.git',
                         credentialsId: 'github-credentials'
                     ]]
                 ])
