@@ -1,19 +1,57 @@
 import pytest
 import logging
+import sys
+import os
+
+# Добавляем путь к корневой папке проекта
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
 
 class TestCart:
     """Test cases for shopping cart functionality"""
     
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Setup before each test"""
+        # Принудительно устанавливаем chrome если обнаружен путь VS Code
+        if hasattr(settings, 'BROWSER') and "/vscode/" in str(settings.BROWSER):
+            settings.BROWSER = "chrome"
+            logger.info(f"VS Code fix: Browser set to 'chrome'")
+
     @pytest.mark.smoke
     def test_add_product_to_cart(self, login_page):
         """Test adding a product to cart"""
         # Login
         products_page = login_page.login(
-            settings.TEST_USERS["standard"]["username"],
-            settings.TEST_USERS["standard"]["password"]
+            settings.TEST_USERS["standard"]["standard_user"],
+            settings.TEST_USERS["standard"]["secret_sauce"]
         )
         
+        logger.info(f"Testing with browser: {settings.BROWSER}")
+        
+        # Login
+        products_page = login_page.login(username, password)
+        
+        # Add product to cart
+        initial_count = products_page.get_cart_count()
+        success = products_page.add_product_to_cart(0)
+        
+        assert success, "Failed to add product to cart"
+        
+        # Verify cart count increased
+        new_count = products_page.get_cart_count()
+        assert new_count == initial_count + 1, \
+            f"Cart count should be {initial_count + 1}, but got {new_count}"
+        
+        # Go to cart and verify product is there
+        cart_page = products_page.go_to_cart()
+        assert not cart_page.is_empty(), "Cart should not be empty"
+        assert cart_page.get_items_count() == 1, "Cart should have 1 item"
+
         # Add product to cart
         initial_count = products_page.get_cart_count()
         products_page.add_product_to_cart(0)
@@ -34,21 +72,26 @@ class TestCart:
     def test_remove_product_from_cart(self, login_page):
         """Test removing product from cart"""
         products_page = login_page.login(
-            settings.TEST_USERS["standard"]["username"],
-            settings.TEST_USERS["standard"]["password"]
+            settings.TEST_USERS["standard"]["standard_user"],
+            settings.TEST_USERS["standard"]["secret_sauce"]
         )
+        
+        products_page = login_page.login(username, password)
         
         # Add two products
         products_page.add_product_to_cart(0)
         products_page.add_product_to_cart(1)
-        assert products_page.get_cart_count() == 2
+        
+        cart_count = products_page.get_cart_count()
+        assert cart_count == 2, f"Expected 2 items in cart, got {cart_count}"
         
         # Go to cart and remove one
         cart_page = products_page.go_to_cart()
         cart_page.remove_item(0)
         
         # Verify only one item remains
-        assert cart_page.get_items_count() == 1
+        remaining_items = cart_page.get_items_count()
+        assert remaining_items == 1, f"Expected 1 item remaining, got {remaining_items}"
     
     def test_continue_shopping(self, login_page):
         """Test continue shopping button"""
