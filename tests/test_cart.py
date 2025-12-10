@@ -22,7 +22,6 @@ class TestCart:
             settings.BROWSER = "chrome"
             logger.info(f"VS Code fix: Browser set to 'chrome'")
 
-    @pytest.fixture
     def test_add_product_to_cart(self, login_page):
         """Test adding a product to cart"""
         # Login
@@ -69,7 +68,6 @@ class TestCart:
         assert item_details['name'] is not None
         assert item_details['price'] is not None
     
-    @pytest.fixture
     def test_remove_product_from_cart(self, login_page):
         """Test removing product from cart"""
         products_page = login_page.login(
@@ -94,7 +92,6 @@ class TestCart:
         remaining_items = cart_page.get_items_count()
         assert remaining_items == 1, f"Expected 1 item remaining, got {remaining_items}"
     
-    @pytest.fixture
     def test_continue_shopping(self, login_page):
         """Test continue shopping button"""
         products_page = login_page.login(
@@ -110,7 +107,6 @@ class TestCart:
         products_page = cart_page.continue_shopping()
         assert products_page.get_title() == "Products"
     
-    @pytest.fixture
     def test_empty_cart(self, login_page):
         """Test cart is empty initially"""
         products_page = login_page.login(
@@ -125,7 +121,6 @@ class TestCart:
         assert cart_page.is_empty()
         assert cart_page.get_items_count() == 0
     
-    @pytest.fixture
     def test_cart_total_calculation(self, login_page):
         """Test cart total price calculation"""
         products_page = login_page.login(
