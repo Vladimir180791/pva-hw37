@@ -1,59 +1,55 @@
 pipeline {
     agent any
     
-    environment {
-        PYTHON_PATH = "${WORKSPACE}"
-        ALLURE_RESULTS = "${WORKSPACE}/reports/allure-results"
-    }
-    
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'pva-hw37',
-                url: 'https://github.com/Vladimir180791/pva-hw37.git'
+                checkout scm
             }
         }
         
         stage('Setup Environment') {
             steps {
-                sh 'python -m pip install --upgrade pip'
-                sh 'pip install -r requirements.txt'
+                // ВМЕСТО sh используйте bat для Windows
+                bat 'python -m venv venv'
+                bat 'call venv\\Scripts\\activate.bat'
+                bat 'pip install -r requirements.txt'
+                
+                // Если нужно установить ChromeDriver
+                bat 'pip install webdriver-manager'
             }
         }
         
         stage('Run Tests') {
             steps {
-                sh '''
-                pytest tests/ \
-                  --browser=chrome \
-                  --headless \
-                  --alluredir=${ALLURE_RESULTS} \
-                  -v
-                '''
+                // Для запуска тестов
+                bat 'pytest tests/ --html=reports/html/report.html --self-contained-html'
+                // или если используете скрипт
+                bat 'python run_tests.py'
             }
         }
         
         stage('Generate Report') {
             steps {
-                script {
-                    allure([
-                        includeProperties: false,
-                        jdk: '',
-                        properties: [],
-                        reportBuildPolicy: 'ALWAYS',
-                        results: [[path: 'reports/allure-results']]
-                    ])
-                }
+                // Копирование или обработка отчетов
+                bat 'copy reports\\html\\*.html %WORKSPACE%\\reports\\'  // Пример для Windows
+            }
+        }
+
+        stage('Diagnostics') {
+            steps {
+                bat 'where python'
+                bat 'python --version'
+                bat 'where git'
+                bat 'echo %WORKSPACE%'
             }
         }
     }
     
     post {
         always {
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
+            // Публикация HTML отчета (это Jenkins плагин, не команда)
+            publishHTML(target: [
                 reportDir: 'reports/html',
                 reportFiles: 'report.html',
                 reportName: 'HTML Report'
