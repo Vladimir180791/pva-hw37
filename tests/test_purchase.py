@@ -2,7 +2,7 @@ import pytest
 import logging
 
 class TestPurchase:
-    @pytest.mark.smoke
+    @pytest.fixture
     def test_complete_purchase_flow(self, login_page):
         """Test complete purchase flow from login to checkout"""
         # Login

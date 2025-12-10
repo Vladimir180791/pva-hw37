@@ -131,10 +131,16 @@ class Settings:
     
     # =========== VALIDATION ===========
     @classmethod
+  
     def validate(cls):
         """Validate critical settings"""
         errors = []
         
+        browser_str = str(cls.BROWSER).lower()
+        if "/vscode/" in browser_str or "/helpers/browser" in browser_str:
+           cls.BROWSER = "chrome"
+           print(f"INFO: Browser normalized from '{browser_str}' to '{cls.BROWSER}' for CI environment")
+
         # Validate browser
         if cls.BROWSER not in ["chrome", "firefox", "edge"]:
             errors.append(f"Invalid browser: {cls.BROWSER}")
@@ -152,8 +158,8 @@ class Settings:
           error_count = len(errors)
           formatted_errors = '\n  • '.join(errors)
           raise ValueError(
-          f"Found {error_count} configuration error(s):\n  • {formatted_errors}"
-          )
+              f"Found {error_count} configuration error(s):\n  • {formatted_errors}"
+              )
 
         return True
     

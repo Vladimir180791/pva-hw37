@@ -5,7 +5,6 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.remote_connection import RemoteConnection
-
 from config.settings import settings
 from utils.logger import setup_logger
 
