@@ -187,66 +187,6 @@ class Settings:
             os.makedirs(directory, exist_ok=True)
         
         return True
-    
-    @classmethod
-    def _normalize_browser(cls, browser_value):
-        """Нормализует значение браузера из окружения"""
-        if not browser_value:
-            return "chrome"
-        
-        browser_str = str(browser_value).lower().strip()
-        
-        # Если это путь VS Code, определяем браузер по содержанию
-        if "/vscode/" in browser_str or "/helpers/browser" in browser_str:
-            # VS Code передает путь, но обычно это Chrome
-            print(f"INFO: VS Code browser path detected, using 'chrome' (was: {browser_str})")
-            return "chrome"
-        
-        # Если это обычный путь, пытаемся определить браузер
-        if "/" in browser_str:
-            if "chrome" in browser_str:
-                return "chrome"
-            elif "firefox" in browser_str:
-                return "firefox"
-            elif "edge" in browser_str:
-                return "edge"
-            else:
-                # Неизвестный путь - используем chrome по умолчанию
-                return "chrome"
-        
-        # Если это просто имя браузера
-        if browser_str in ["chrome", "firefox", "edge"]:
-            return browser_str
-        
-        # Неизвестное значение - chrome по умолчанию
-        return "chrome"
-    
-    @classmethod
-    def validate(cls):
-        """Validate critical settings"""
-        errors = []
-        
-        # НОРМАЛИЗУЕМ значение BROWSER перед валидацией
-        original_browser = cls.BROWSER
-        cls.BROWSER = cls._normalize_browser(cls.BROWSER)
-        
-        if original_browser != cls.BROWSER:
-            print(f"INFO: Browser normalized from '{original_browser}' to '{cls.BROWSER}'")
-        
-        # Теперь валидируем (должно проходить всегда после нормализации)
-        if cls.BROWSER not in ["chrome", "firefox", "edge"]:
-            # Это не должно происходить после нормализации, но на всякий случай
-            cls.BROWSER = "chrome"
-            print(f"WARNING: Invalid browser '{original_browser}', using 'chrome' as default")
-        
-        # ... остальная валидация (если есть) ...
-        
-        if errors:
-            # Логируем ошибки, но не падаем
-            for error in errors:
-                print(f"CONFIG WARNING: {error}")
-        
-        return True
 
 
 # Create global settings instance
