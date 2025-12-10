@@ -1,26 +1,51 @@
 import pytest
-import logging
+from pages.login_page import LoginPage
+from pages.products_page import ProductsPage
+from pages.cart_page import CartPage
+from pages.checkout_page import CheckoutPage
 
 class TestPurchase:
-    def test_complete_purchase_flow(self, login_page):
-        """Test complete purchase flow from login to checkout"""
-        # Login
-        products_page = login_page.login("standard_user", "secret_sauce")
+    @pytest.fixture(autouse=True)
+    def setup(self, driver):
+        self.driver = driver
+        self.login_page = LoginPage(driver)
+        self.products_page = ProductsPage(driver)
+        self.cart_page = CartPage(driver)
+        self.checkout_page = CheckoutPage(driver)
         
-        # Add product to cart
-        products_page.add_product_to_cart(0)
-        assert products_page.get_cart_count() == 1
+        # Логин
+        self.login_page.login('standard_user', 'secret_sauce')
         
-        # Go to cart and checkout
-        cart_page = products_page.go_to_cart()
-        checkout_page = cart_page.go_to_checkout()
+    def test_complete_purchase_flow(self):
+        """Тест полного процесса покупки"""
+        # 1. Добавляем товар в корзину
+        self.products_page.add_to_cart('Sauce Labs Backpack')
         
-        # Fill checkout information
-        checkout_page.fill_checkout_info("John", "Doe", "12345")
-        overview_page = checkout_page.continue_to_overview()
+        # 2. Переходим в корзину
+        self.products_page.go_to_cart()
         
-        # Complete purchase
-        complete_page = overview_page.finish_purchase()
+        # 3. Проверяем товар в корзине
+        cart_items = self.cart_page.get_cart_items()
+        assert len(cart_items) == 1
         
-        # Verify success
-        assert "Thank you for your order" in complete_page.get_success_message()
+        # 4. Начинаем оформление заказа
+        self.cart_page.checkout()
+        
+        # 5. Заполняем информацию
+        self.checkout_page.fill_checkout_info('John', 'Doe', '12345')
+        
+        # 6. Завершаем покупку
+        self.checkout_page.finish_checkout()
+        
+        # 7. Проверяем подтверждение
+        confirmation = self.checkout_page.get_confirmation_message()
+        assert "Thank you for your order" in confirmation
+        
+        # 8. Проверяем, что корзина пуста (количество товаров = 0)
+        cart_badge = self.driver.find_elements(By.CLASS_NAME, "shopping_cart_badge")
+        if cart_badge:
+            cart_count = int(cart_badge[0].text)
+            assert cart_count == 0
+        else:
+            # Значок корзины не отображается, значит корзина пуста
+            pass

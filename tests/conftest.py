@@ -65,7 +65,16 @@ def driver():
 # Остальные фикстуры
 @pytest.fixture
 def base_url():
-    return "https://www.saucedemo.com"
+    return "https://www.saucedemo.com/"
+
+@pytest.fixture
+def user_credentials():
+    return {
+        'standard_user': {'username': 'standard_user', 'password': 'secret_sauce'},
+        'locked_user': {'username': 'locked_out_user', 'password': 'secret_sauce'},
+        'problem_user': {'username': 'problem_user', 'password': 'secret_sauce'},
+        'performance_user': {'username': 'performance_glitch_user', 'password': 'secret_sauce'}
+    }
 
 @pytest.fixture
 def login_page(driver, base_url):

@@ -109,9 +109,9 @@ class ProductsPage(BasePage):
             return 0
     
     def go_to_cart(self):
-        self.click_element(self.CART_LINK)
-        self.logger.info("Navigating to cart")
-        
+        """Переход в корзину"""
+        cart_button = self.driver.find_element(By.CLASS_NAME, "shopping_cart_link")
+        cart_button.click()
         from pages.cart_page import CartPage
         return CartPage(self.driver)
     
