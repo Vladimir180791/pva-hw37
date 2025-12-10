@@ -9,8 +9,8 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                url: 'https://github.com/your-username/saucedemo-autotests.git'
+                git branch: 'pwa-hw37',
+                url: 'https://github.com/Vladimir180791/pwa-hw37.git'
             }
         }
         

@@ -148,8 +148,13 @@ class Settings:
             errors.append("Standard user username is not set")
         
         if errors:
-            raise ValueError(f"Configuration errors: {', '.join(errors)}")
-        
+        # сообщение с подсчетом ошибок
+          error_count = len(errors)
+          formatted_errors = '\n  • '.join(errors)
+          raise ValueError(
+          f"Found {error_count} configuration error(s):\n  • {formatted_errors}"
+          )
+
         return True
     
     @classmethod
