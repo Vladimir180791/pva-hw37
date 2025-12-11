@@ -20,19 +20,15 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Для Windows используем checkout без sh
-                checkout([$class: 'GitSCM',
-                    branches: [[name: '*/pva-hw37']],
-                    userRemoteConfigs: [[url: 'https://github.com/Vladimir180791/pva-hw37.git']],
-                    extensions: [[$class: 'CleanBeforeCheckout']]
-                ])
+                // Простой checkout
+                checkout scm
             }
         }
         
         stage('Setup Environment') {
             steps {
-                // НА WINDOWS ИСПОЛЬЗУЕМ bat ВМЕСТО sh!
-                sh """
+                // ИСПРАВЛЕНО: bat вместо sh
+                bat """
                     echo "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
                     echo "Окружение: %ENVIRONMENT%"
                     echo "Браузер: %BROWSER%"
@@ -41,8 +37,8 @@ pipeline {
                     echo "Параллельных воркеров: %PARALLEL_WORKERS%"
                 """
                 
-                // Создаем .env файл для Python
-                sh """
+                // ИСПРАВЛЕНО: bat вместо sh
+                bat """
                     echo Создаем .env файл с настройками...
                     (
                         echo ENVIRONMENT=%ENVIRONMENT%
@@ -67,35 +63,33 @@ pipeline {
         
         stage('Install Dependencies') {
             steps {
-                sh """
+                // ИСПРАВЛЕНО: bat вместо sh
+                bat """
                     echo "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
                     
                     echo Проверяем Python...
-                    python --version || echo "Python не найден, проверьте PATH"
+                    python --version
+                    if errorlevel 1 (
+                        echo "Python не найден, проверьте PATH"
+                        exit 1
+                    )
                     
                     echo Обновляем pip...
                     python -m pip install --upgrade pip
                     
-                    echo Устанавливаем зависимости из requirements.txt...
-                    if exist requirements.txt (
-                        pip install -r requirements.txt
-                    ) else (
-                        echo "requirements.txt не найден, устанавливаем базовые зависимости"
-                        pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
-                    )
-                    
-                    echo "=== УСТАНОВКА ДЛЯ WINDOWS ==="
-                    pip install pywin32  # Для работы с Windows
+                    echo Устанавливаем зависимости...
+                    pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
                     
                     echo Список установленных пакетов:
-                    pip list
+                    pip list | findstr /i "selenium pytest"
                 """
             }
         }
         
         stage('Run Tests') {
             steps {
-                sh """
+                // ИСПРАВЛЕНО: bat вместо sh
+                bat """
                     echo "=== ЗАПУСК ТЕСТОВ ==="
                     
                     echo Создаем директории для отчетов...
@@ -103,7 +97,7 @@ pipeline {
                     if not exist reports\\allure-results mkdir reports\\allure-results
                     if not exist reports\\html mkdir reports\\html
                     
-                    echo Запускаем тесты с параметрами...
+                    echo Запускаем тесты...
                     python -m pytest tests/ ^
                         --junitxml=reports\\junit.xml ^
                         --html=reports\\html\\report.html ^
@@ -115,37 +109,16 @@ pipeline {
                     echo Код завершения тестов: %ERRORLEVEL%
                 """
             }
-            
-            post {
-                always {
-                    // Сохраняем артефакты независимо от результата
-                    archiveArtifacts artifacts: 'reports\\**\\*', fingerprint: true
-                }
-            }
         }
         
         stage('Generate Reports') {
             steps {
-                sh """
+                // ИСПРАВЛЕНО: bat вместо sh
+                bat """
                     echo "=== ГЕНЕРАЦИЯ ОТЧЕТОВ ==="
                     
-                    echo Проверяем наличие Allure...
-                    allure --version 2>nul || (
-                        echo "Allure не установлен в системе"
-                        echo "Устанавливаем через npm..."
-                        npm install -g allure-commandline 2>nul || echo "npm не доступен"
-                    )
-                    
-                    echo Генерируем Allure отчет если есть результаты...
-                    if exist reports\\allure-results\\*.json (
-                        echo Найдены результаты Allure, генерируем отчет...
-                        allure generate reports\\allure-results -o reports\\allure-report --clean
-                    ) else (
-                        echo "Результаты Allure не найдены"
-                    )
-                    
-                    echo "=== ГОТОВЫЕ ОТЧЕТЫ ==="
-                    dir reports /s
+                    echo Готовые отчеты находятся в папке reports
+                    dir reports
                 """
             }
         }
@@ -153,6 +126,9 @@ pipeline {
     
     post {
         always {
+            // Архивация отчетов
+            archiveArtifacts artifacts: 'reports\\**\\*', fingerprint: true
+            
             // Публикация HTML отчета
             publishHTML(target: [
                 reportDir: 'reports/html',
@@ -161,8 +137,8 @@ pipeline {
                 keepAll: true
             ])
             
-            // Очистка
-            sh """
+            // ИСПРАВЛЕНО: bat вместо sh
+            bat """
                 echo "=== ОЧИСТКА ==="
                 echo Удаляем временные файлы...
                 del .env 2>nul
@@ -172,12 +148,10 @@ pipeline {
         
         success {
             echo "✅ ТЕСТЫ УСПЕШНО ЗАВЕРШЕНЫ!"
-            // Можно добавить уведомление в Teams/Slack
         }
         
         failure {
             echo "❌ ТЕСТЫ ЗАВЕРШИЛИСЬ С ОШИБКОЙ!"
-            // Можно добавить уведомление об ошибке
         }
     }
 }
