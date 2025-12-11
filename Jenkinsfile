@@ -32,7 +32,7 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 // НА WINDOWS ИСПОЛЬЗУЕМ bat ВМЕСТО sh!
-                bat """
+                sh """
                     echo "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
                     echo "Окружение: %ENVIRONMENT%"
                     echo "Браузер: %BROWSER%"
@@ -42,7 +42,7 @@ pipeline {
                 """
                 
                 // Создаем .env файл для Python
-                bat """
+                sh """
                     echo Создаем .env файл с настройками...
                     (
                         echo ENVIRONMENT=%ENVIRONMENT%
@@ -67,7 +67,7 @@ pipeline {
         
         stage('Install Dependencies') {
             steps {
-                bat """
+                sh """
                     echo "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
                     
                     echo Проверяем Python...
@@ -95,7 +95,7 @@ pipeline {
         
         stage('Run Tests') {
             steps {
-                bat """
+                sh """
                     echo "=== ЗАПУСК ТЕСТОВ ==="
                     
                     echo Создаем директории для отчетов...
@@ -126,7 +126,7 @@ pipeline {
         
         stage('Generate Reports') {
             steps {
-                bat """
+                sh """
                     echo "=== ГЕНЕРАЦИЯ ОТЧЕТОВ ==="
                     
                     echo Проверяем наличие Allure...
@@ -162,7 +162,7 @@ pipeline {
             ])
             
             // Очистка
-            bat """
+            sh """
                 echo "=== ОЧИСТКА ==="
                 echo Удаляем временные файлы...
                 del .env 2>nul
