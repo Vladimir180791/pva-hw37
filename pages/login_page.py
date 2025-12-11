@@ -1,6 +1,7 @@
 # pages/login_page.py
 from selenium.webdriver.common.by import By
 from .base_page import BasePage
+import time  # Убедитесь, что этот импорт есть!
 
 class LoginPage(BasePage):
     """Page Object для страницы логина."""
@@ -19,16 +20,25 @@ class LoginPage(BasePage):
         # Ждем загрузки страницы
         self.wait_for_page_load()
         
-        # Ждем видимости полей (ИСПРАВЛЕНО: используем wait_for_element_visible)
-        self.wait_for_element_visible(self.USERNAME_INPUT, timeout=15)
+        print(f"Ищу поле username с локатором: {self.USERNAME_INPUT}")
         
-        # Вводим данные
-        self.enter_text(self.USERNAME_INPUT, standard_user)
-        self.enter_text(self.PASSWORD_INPUT, secret_sauce)
+        # Ждем видимости полей
+        self.wait_for_element_visible(self.USERNAME_INPUT, timeout=15)
+        print("✓ Поле username найдено и видимо")
+        
+        # ИСПРАВЛЕНО: используем ПАРАМЕТРЫ метода, а не переменные!
+        print(f"Ввожу username: '{username}'")
+        self.enter_text(self.USERNAME_INPUT, username)  # Было: standard_user
+        
+        print(f"Ввожу password: '{password}'")
+        self.enter_text(self.PASSWORD_INPUT, password)  # Было: secret_sauce
+        
+        print("Кликаю по кнопке логина")
         self.click_element(self.LOGIN_BUTTON)
         
         # Небольшая пауза после клика
         time.sleep(1)
+        print("Логин выполнен, жду 1 секунду")
 
     def get_error_message(self):
         """Получить текст сообщения об ошибке."""
