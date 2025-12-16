@@ -20,39 +20,36 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Простой checkout
                 checkout scm
             }
         }
         
         stage('Setup Environment') {
             steps {
-                // ИСПРАВЛЕНО: bat вместо sh
                 bat """
-                    echo "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
-                    echo "Окружение: %ENVIRONMENT%"
-                    echo "Браузер: %BROWSER%"
-                    echo "Headless: %HEADLESS%"
-                    echo "Base URL: %BASE_URL%"
-                    echo "Параллельных воркеров: %PARALLEL_WORKERS%"
+                    echo === НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ===
+                    echo Окружение: %ENVIRONMENT%
+                    echo Браузер: %BROWSER%
+                    echo Headless: %HEADLESS%
+                    echo Base URL: %BASE_URL%
+                    echo Параллельных воркеров: %PARALLEL_WORKERS%
                 """
                 
-                // ИСПРАВЛЕНО: bat вместо sh
                 bat """
                     echo Создаем .env файл с настройками...
                     (
-                        echo ENVIRONMENT=%ENVIRONMENT%
-                        echo BROWSER=%BROWSER%
-                        echo HEADLESS=%HEADLESS%
-                        echo BASE_URL=%BASE_URL%
-                        echo STANDARD_USER=standard_user
-                        echo STANDARD_PASSWORD=secret_sauce
-                        echo TIMEOUT=10
-                        echo PAGE_LOAD_TIMEOUT=30
-                        echo GENERATE_ALLURE=true
-                        echo GENERATE_HTML=true
-                        echo SAVE_SCREENSHOTS=on_failure
-                        echo PARALLEL_WORKERS=%PARALLEL_WORKERS%
+echo ENVIRONMENT=%ENVIRONMENT%
+echo BROWSER=%BROWSER%
+echo HEADLESS=%HEADLESS%
+echo BASE_URL=%BASE_URL%
+echo STANDARD_USER=standard_user
+echo STANDARD_PASSWORD=secret_sauce
+echo TIMEOUT=10
+echo PAGE_LOAD_TIMEOUT=30
+echo GENERATE_ALLURE=true
+echo GENERATE_HTML=true
+echo SAVE_SCREENSHOTS=on_failure
+echo PARALLEL_WORKERS=%PARALLEL_WORKERS%
                     ) > .env
                     
                     echo Содержимое .env:
@@ -63,14 +60,13 @@ pipeline {
         
         stage('Install Dependencies') {
             steps {
-                // ИСПРАВЛЕНО: bat вместо sh
                 bat """
-                    echo "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
+                    echo === УСТАНОВКА ЗАВИСИМОСТЕЙ ===
                     
                     echo Проверяем Python...
                     python --version
                     if errorlevel 1 (
-                        echo "Python не найден, проверьте PATH"
+                        echo Python не найден, проверьте PATH
                         exit 1
                     )
                     
@@ -81,16 +77,15 @@ pipeline {
                     pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
                     
                     echo Список установленных пакетов:
-                    pip list | findstr /i "selenium pytest"
+                    pip list
                 """
             }
         }
         
         stage('Run Tests') {
             steps {
-                // ИСПРАВЛЕНО: bat вместо sh
                 bat """
-                    echo "=== ЗАПУСК ТЕСТОВ ==="
+                    echo === ЗАПУСК ТЕСТОВ ===
                     
                     echo Создаем директории для отчетов...
                     if not exist reports mkdir reports
@@ -113,9 +108,8 @@ pipeline {
         
         stage('Generate Reports') {
             steps {
-                // ИСПРАВЛЕНО: bat вместо sh
                 bat """
-                    echo "=== ГЕНЕРАЦИЯ ОТЧЕТОВ ==="
+                    echo === ГЕНЕРАЦИЯ ОТЧЕТОВ ===
                     
                     echo Готовые отчеты находятся в папке reports
                     dir reports
@@ -126,10 +120,8 @@ pipeline {
     
     post {
         always {
-            // Архивация отчетов
             archiveArtifacts artifacts: 'reports\\**\\*', fingerprint: true
             
-            // Публикация HTML отчета
             publishHTML(target: [
                 reportDir: 'reports/html',
                 reportFiles: 'report.html',
@@ -137,9 +129,8 @@ pipeline {
                 keepAll: true
             ])
             
-            // ИСПРАВЛЕНО: bat вместо sh
             bat """
-                echo "=== ОЧИСТКА ==="
+                echo === ОЧИСТКА ===
                 echo Удаляем временные файлы...
                 del .env 2>nul
                 echo Готово!
@@ -147,11 +138,11 @@ pipeline {
         }
         
         success {
-            echo "✅ ТЕСТЫ УСПЕШНО ЗАВЕРШЕНЫ!"
+            echo "ТЕСТЫ УСПЕШНО ЗАВЕРШЕНЫ!"
         }
         
         failure {
-            echo "❌ ТЕСТЫ ЗАВЕРШИЛИСЬ С ОШИБКОЙ!"
+            echo "ТЕСТЫ ЗАВЕРШИЛИСЬ С ОШИБКОЙ!"
         }
     }
 }
