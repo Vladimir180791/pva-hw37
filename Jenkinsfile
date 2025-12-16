@@ -9,14 +9,6 @@ pipeline {
         string(name: 'PARALLEL_WORKERS', defaultValue: '2', description: 'Number of parallel workers')
     }
     
-    environment {
-        ENVIRONMENT = "${params.ENVIRONMENT}"
-        BROWSER = "${params.BROWSER}"
-        HEADLESS = "${params.HEADLESS}"
-        BASE_URL = "${params.BASE_URL}"
-        PARALLEL_WORKERS = "${params.PARALLEL_WORKERS}"
-    }
-    
     stages {
         stage('Checkout') {
             steps {
@@ -26,94 +18,86 @@ pipeline {
         
         stage('Setup Environment') {
             steps {
-                bat """
-                    echo === НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ===
-                    echo Окружение: %ENVIRONMENT%
-                    echo Браузер: %BROWSER%
-                    echo Headless: %HEADLESS%
-                    echo Base URL: %BASE_URL%
-                    echo Параллельных воркеров: %PARALLEL_WORKERS%
-                """
-                
-                bat """
-                    echo Создаем .env файл с настройками...
-                    (
-echo ENVIRONMENT=%ENVIRONMENT%
-echo BROWSER=%BROWSER%
-echo HEADLESS=%HEADLESS%
-echo BASE_URL=%BASE_URL%
-echo STANDARD_USER=standard_user
-echo STANDARD_PASSWORD=secret_sauce
-echo TIMEOUT=10
-echo PAGE_LOAD_TIMEOUT=30
-echo GENERATE_ALLURE=true
-echo GENERATE_HTML=true
-echo SAVE_SCREENSHOTS=on_failure
-echo PARALLEL_WORKERS=%PARALLEL_WORKERS%
-                    ) > .env
+                powershell '''
+                    Write-Host "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
+                    Write-Host "Окружение: $env:ENVIRONMENT"
+                    Write-Host "Браузер: $env:BROWSER"
+                    Write-Host "Headless: $env:HEADLESS"
+                    Write-Host "Base URL: $env:BASE_URL"
+                    Write-Host "Параллельных воркеров: $env:PARALLEL_WORKERS"
                     
-                    echo Содержимое .env:
-                    type .env
-                """
+                    # Создаем .env файл
+                    $envContent = @"
+ENVIRONMENT=$env:ENVIRONMENT
+BROWSER=$env:BROWSER
+HEADLESS=$env:HEADLESS
+BASE_URL=$env:BASE_URL
+STANDARD_USER=standard_user
+STANDARD_PASSWORD=secret_sauce
+TIMEOUT=10
+PAGE_LOAD_TIMEOUT=30
+GENERATE_ALLURE=true
+GENERATE_HTML=true
+SAVE_SCREENSHOTS=on_failure
+PARALLEL_WORKERS=$env:PARALLEL_WORKERS
+"@
+                    
+                    $envContent | Out-File -FilePath .env -Encoding UTF8
+                    Write-Host "Содержимое .env:"
+                    Get-Content .env
+                '''
             }
         }
         
         stage('Install Dependencies') {
             steps {
-                bat """
-                    echo === УСТАНОВКА ЗАВИСИМОСТЕЙ ===
+                powershell '''
+                    Write-Host "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
                     
-                    echo Проверяем Python...
+                    Write-Host "Проверяем Python..."
                     python --version
-                    if errorlevel 1 (
-                        echo Python не найден, проверьте PATH
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Host "Python не найден, проверьте PATH" -ForegroundColor Red
                         exit 1
-                    )
+                    }
                     
-                    echo Обновляем pip...
+                    Write-Host "Обновляем pip..."
                     python -m pip install --upgrade pip
                     
-                    echo Устанавливаем зависимости...
+                    Write-Host "Устанавливаем зависимости..."
                     pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
                     
-                    echo Список установленных пакетов:
-                    pip list
-                """
+                    Write-Host "Список установленных пакетов:"
+                    pip list | Select-String -Pattern "selenium|pytest|allure"
+                '''
             }
         }
         
         stage('Run Tests') {
             steps {
-                bat """
-                    echo === ЗАПУСК ТЕСТОВ ===
+                powershell '''
+                    Write-Host "=== ЗАПУСК ТЕСТОВ ==="
                     
-                    echo Создаем директории для отчетов...
-                    if not exist reports mkdir reports
-                    if not exist reports\\allure-results mkdir reports\\allure-results
-                    if not exist reports\\html mkdir reports\\html
+                    Write-Host "Создаем директории для отчетов..."
+                    if (!(Test-Path "reports")) { New-Item -ItemType Directory -Path "reports" }
+                    if (!(Test-Path "reports\\allure-results")) { New-Item -ItemType Directory -Path "reports\\allure-results" }
+                    if (!(Test-Path "reports\\html")) { New-Item -ItemType Directory -Path "reports\\html" }
                     
-                    echo Запускаем тесты...
-                    python -m pytest tests/ ^
-                        --junitxml=reports\\junit.xml ^
-                        --html=reports\\html\\report.html ^
-                        --self-contained-html ^
-                        -n %PARALLEL_WORKERS% ^
-                        --timeout=300 ^
-                        -v
+                    Write-Host "Запускаем тесты..."
+                    $testCommand = @"
+python -m pytest tests/ `
+    --junitxml=reports\\junit.xml `
+    --html=reports\\html\\report.html `
+    --self-contained-html `
+    -n $env:PARALLEL_WORKERS `
+    --timeout=300 `
+    -v
+"@
                     
-                    echo Код завершения тестов: %ERRORLEVEL%
-                """
-            }
-        }
-        
-        stage('Generate Reports') {
-            steps {
-                bat """
-                    echo === ГЕНЕРАЦИЯ ОТЧЕТОВ ===
+                    Invoke-Expression $testCommand
                     
-                    echo Готовые отчеты находятся в папке reports
-                    dir reports
-                """
+                    Write-Host "Код завершения тестов: $LASTEXITCODE"
+                '''
             }
         }
     }
@@ -129,20 +113,12 @@ echo PARALLEL_WORKERS=%PARALLEL_WORKERS%
                 keepAll: true
             ])
             
-            bat """
-                echo === ОЧИСТКА ===
-                echo Удаляем временные файлы...
-                del .env 2>nul
-                echo Готово!
-            """
-        }
-        
-        success {
-            echo "ТЕСТЫ УСПЕШНО ЗАВЕРШЕНЫ!"
-        }
-        
-        failure {
-            echo "ТЕСТЫ ЗАВЕРШИЛИСЬ С ОШИБКОЙ!"
+            powershell '''
+                Write-Host "=== ОЧИСТКА ==="
+                Write-Host "Удаляем временные файлы..."
+                if (Test-Path ".env") { Remove-Item ".env" }
+                Write-Host "Готово!"
+            '''
         }
     }
 }
