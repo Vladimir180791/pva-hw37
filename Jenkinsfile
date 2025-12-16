@@ -9,6 +9,7 @@ pipeline {
         string(name: 'PARALLEL_WORKERS', defaultValue: '2', description: 'Number of parallel workers')
     }
     
+    // Используем английские имена переменных без кириллицы
     environment {
         ENV_NAME = "${params.ENVIRONMENT}"
         BRWS = "${params.BROWSER}"
@@ -22,6 +23,7 @@ pipeline {
             steps {
                 checkout scm
                 
+                // Проверка что файлы загрузились
                 bat """
                     echo CHECKING FILES
                     dir /b
@@ -29,39 +31,9 @@ pipeline {
             }
         }
         
-        stage('Check and Install Python') {
-            steps {
-                bat """
-                    echo === CHECKING PYTHON INSTALLATION ===
-                    
-                    rem Проверяем, установлен ли Python
-                    where python 2>nul
-                    if %ERRORLEVEL% EQU 0 (
-                        echo Python уже установлен
-                        python --version
-                    ) else (
-                        echo Python не найден, проверяем другие варианты...
-                        
-                        rem Проверяем python3
-                        where python3 2>nul
-                        if %ERRORLEVEL% EQU 0 (
-                            echo Найден python3
-                            python3 --version
-                            rem Создаем симлинк python -> python3
-                            mklink python.exe python3.exe 2>nul || echo Не удалось создать симлинк
-                        ) else (
-                            echo ERROR: Python не установлен на этом агенте
-                            echo Установите Python и добавьте в PATH
-                            echo ИЛИ используйте агент с предустановленным Python
-                            exit 1
-                        )
-                    )
-                """
-            }
-        }
-        
         stage('Setup Environment') {
             steps {
+                // Используем простой bat с ASCII символами
                 bat """
                     echo === SETUP ENVIRONMENT ===
                     echo Environment: %ENV_NAME%
@@ -69,7 +41,7 @@ pipeline {
                     echo Headless: %HDLESS%
                     echo Base URL: %B_URL%
                     
-                    rem Create simple .env file
+                    rem Create simple .env file without complex characters
                     echo BASE_URL=%B_URL% > test_config.txt
                     echo BROWSER=%BRWS% >> test_config.txt
                     echo HEADLESS=%HDLESS% >> test_config.txt
@@ -86,56 +58,29 @@ pipeline {
                 bat """
                     echo === INSTALL DEPENDENCIES ===
                     
-                    echo Final Python check:
-                    python --version || python3 --version || (
-                        echo CRITICAL: Python все еще не найден
-                        echo Установите Python на Jenkins агенте
+                    echo Checking Python...
+                    python --version
+                    if errorlevel 1 (
+                        echo ERROR: Python not found
                         exit 1
                     )
                     
                     echo Updating pip...
-                    python -m pip install --upgrade pip || python3 -m pip install --upgrade pip
+                    python -m pip install --upgrade pip
                     
-                    echo Installing dependencies from requirements.txt...
-                    if exist requirements.txt (
-                        echo Found requirements.txt
-                        pip install -r requirements.txt || python3 -m pip install -r requirements.txt
-                    ) else (
-                        echo Installing minimal dependencies...
-                        pip install selenium webdriver-manager pytest pytest-html || python3 -m pip install selenium webdriver-manager pytest pytest-html
-                    )
+                    echo Installing dependencies...
+                    pip install selenium webdriver-manager pytest pytest-html
                     
                     echo Installed packages:
-                    pip list || python3 -m pip list
+                    pip list | findstr /i "selenium pytest"
                 """
             }
         }
         
-        stage('Run Simple Test') {
+        stage('Run Tests') {
             steps {
                 bat """
-                    echo === RUNNING SIMPLE TEST ===
-                    
-                    echo Creating simple test to verify installation...
-                    echo import pytest > simple_test.py
-                    echo def test_simple(): >> simple_test.py
-                    echo     assert 1 == 1 >> simple_test.py
-                    
-                    echo Running test...
-                    python -m pytest simple_test.py -v || python3 -m pytest simple_test.py -v
-                    
-                    del simple_test.py 2>nul
-                """
-            }
-        }
-        
-        stage('Run Real Tests') {
-            when {
-                expression { return true }
-            }
-            steps {
-                bat """
-                    echo === RUNNING REAL TESTS ===
+                    echo === RUNNING TESTS ===
                     
                     echo Creating report directories...
                     if not exist reports mkdir reports
@@ -158,6 +103,7 @@ pipeline {
     
     post {
         always {
+            // Archive reports if they exist
             script {
                 try {
                     if (fileExists('reports/html/report.html')) {
@@ -175,6 +121,7 @@ pipeline {
                 }
             }
             
+            // Cleanup
             bat """
                 echo === CLEANUP ===
                 del test_config.txt 2>nul
