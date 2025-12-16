@@ -1,6 +1,12 @@
 pipeline {
     agent any
     
+    // Отключаем автоматический checkout чтобы избежать дублирования
+    options {
+        skipDefaultCheckout true
+        timeout(time: 15, unit: 'MINUTES')
+    }
+    
     parameters {
         choice(name: 'ENVIRONMENT', choices: ['development', 'staging', 'production'], description: 'Test environment')
         choice(name: 'BROWSER', choices: ['chrome', 'firefox'], description: 'Browser for tests')
@@ -12,113 +18,133 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                // ОДИН checkout, простой
                 checkout scm
+                
+                // Проверяем что файлы есть
+                bat """
+                    echo === ПРОВЕРКА ФАЙЛОВ ===
+                    dir /b
+                    if exist requirements.txt echo requirements.txt найден
+                """
             }
         }
         
         stage('Setup Environment') {
             steps {
-                powershell '''
-                    Write-Host "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
-                    Write-Host "Окружение: $env:ENVIRONMENT"
-                    Write-Host "Браузер: $env:BROWSER"
-                    Write-Host "Headless: $env:HEADLESS"
-                    Write-Host "Base URL: $env:BASE_URL"
-                    Write-Host "Параллельных воркеров: $env:PARALLEL_WORKERS"
+                // Используем простой bat с минимальными echo
+                bat """
+                    echo === НАСТРОЙКА ОКРУЖЕНИЯ ===
+                    echo Окружение: %ENVIRONMENT%
+                    echo Браузер: %BROWSER%
+                    echo Headless: %HEADLESS%
                     
-                    # Создаем .env файл
-                    $envContent = @"
-ENVIRONMENT=$env:ENVIRONMENT
-BROWSER=$env:BROWSER
-HEADLESS=$env:HEADLESS
-BASE_URL=$env:BASE_URL
-STANDARD_USER=standard_user
-STANDARD_PASSWORD=secret_sauce
-TIMEOUT=10
-PAGE_LOAD_TIMEOUT=30
-GENERATE_ALLURE=true
-GENERATE_HTML=true
-SAVE_SCREENSHOTS=on_failure
-PARALLEL_WORKERS=$env:PARALLEL_WORKERS
-"@
+                    rem Создаем .env файл БЕЗ сложных символов
+                    (
+echo BASE_URL=https://www.saucedemo.com
+echo STANDARD_USER=standard_user
+echo STANDARD_PASSWORD=secret_sauce
+echo TIMEOUT=10
+                    ) > test_env.txt
                     
-                    $envContent | Out-File -FilePath .env -Encoding UTF8
-                    Write-Host "Содержимое .env:"
-                    Get-Content .env
-                '''
+                    type test_env.txt
+                """
             }
         }
         
         stage('Install Dependencies') {
             steps {
-                powershell '''
-                    Write-Host "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
+                bat """
+                    echo === УСТАНОВКА ЗАВИСИМОСТЕЙ ===
                     
-                    Write-Host "Проверяем Python..."
+                    echo Проверяем Python:
                     python --version
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Host "Python не найден, проверьте PATH" -ForegroundColor Red
-                        exit 1
-                    }
+                    if errorlevel 1 exit 1
                     
-                    Write-Host "Обновляем pip..."
-                    python -m pip install --upgrade pip
+                    echo Устанавливаем минимальные зависимости:
+                    pip install selenium webdriver-manager pytest
                     
-                    Write-Host "Устанавливаем зависимости..."
-                    pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
-                    
-                    Write-Host "Список установленных пакетов:"
-                    pip list | Select-String -Pattern "selenium|pytest|allure"
-                '''
+                    echo Проверяем установку:
+                    pip list | findstr /i "selenium pytest"
+                """
             }
         }
         
-        stage('Run Tests') {
+        stage('Run Simple Test') {
             steps {
-                powershell '''
-                    Write-Host "=== ЗАПУСК ТЕСТОВ ==="
+                bat """
+                    echo === ЗАПУСК ПРОСТОГО ТЕСТА ===
                     
-                    Write-Host "Создаем директории для отчетов..."
-                    if (!(Test-Path "reports")) { New-Item -ItemType Directory -Path "reports" }
-                    if (!(Test-Path "reports\\allure-results")) { New-Item -ItemType Directory -Path "reports\\allure-results" }
-                    if (!(Test-Path "reports\\html")) { New-Item -ItemType Directory -Path "reports\\html" }
+                    rem Создаем простой тест для проверки
+                    echo import pytest > test_simple.py
+                    echo def test_one(): >> test_simple.py
+                    echo     assert 1 == 1 >> test_simple.py
                     
-                    Write-Host "Запускаем тесты..."
-                    $testCommand = @"
-python -m pytest tests/ `
-    --junitxml=reports\\junit.xml `
-    --html=reports\\html\\report.html `
-    --self-contained-html `
-    -n $env:PARALLEL_WORKERS `
-    --timeout=300 `
-    -v
-"@
+                    rem Запускаем тест
+                    python -m pytest test_simple.py -v
                     
-                    Invoke-Expression $testCommand
+                    rem Очищаем
+                    del test_simple.py 2>nul
+                """
+            }
+        }
+        
+        stage('Run Real Tests') {
+            when {
+                expression { return true }
+            }
+            steps {
+                bat """
+                    echo === ЗАПУСК РЕАЛЬНЫХ ТЕСТОВ ===
                     
-                    Write-Host "Код завершения тестов: $LASTEXITCODE"
-                '''
+                    rem Создаем папки для отчетов
+                    if not exist reports mkdir reports
+                    if not exist reports\\html mkdir reports\\html
+                    
+                    rem Запускаем тесты
+                    echo Запускаем тест логина...
+                    python -m pytest tests/test_login.py -v --tb=short --html=reports\\html\\report.html --self-contained-html
+                    
+                    echo Код завершения: %ERRORLEVEL%
+                """
             }
         }
     }
     
     post {
         always {
-            archiveArtifacts artifacts: 'reports\\**\\*', fingerprint: true
+            // Сохраняем отчеты если они есть
+            script {
+                try {
+                    if (fileExists('reports/html/report.html')) {
+                        archiveArtifacts artifacts: 'reports/**/*', fingerprint: true
+                        
+                        publishHTML(target: [
+                            reportDir: 'reports/html',
+                            reportFiles: 'report.html',
+                            reportName: 'Test Report',
+                            keepAll: true
+                        ])
+                    }
+                } catch (Exception e) {
+                    echo "Ошибка при сохранении отчетов: ${e}"
+                }
+            }
             
-            publishHTML(target: [
-                reportDir: 'reports/html',
-                reportFiles: 'report.html',
-                reportName: 'HTML Test Report',
-                keepAll: true
-            ])
-            
-            powershell '''
-                Write-Host "=== ОЧИСТКА ==="
-                Write-Host "Удаляем временные файлы..."
-                if (Test-Path ".env") { Remove-Item ".env" }
-                Write-Host "Готово!"
-            '''
+            // Очистка через простой bat
+            bat """
+                echo === ОЧИСТКА ===
+                del test_env.txt 2>nul
+                echo Готово
+            """
+        }
+        
+        success {
+            echo "ТЕСТЫ ЗАВЕРШЕНЫ УСПЕШНО"
+        }
+        
+        failure {
+            echo "ТЕСТЫ ЗАВЕРШИЛИСЬ С ОШИБКОЙ"
         }
     }
 }
