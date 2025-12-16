@@ -9,116 +9,132 @@ pipeline {
         string(name: 'PARALLEL_WORKERS', defaultValue: '2', description: 'Number of parallel workers')
     }
     
+    // Используем английские имена переменных без кириллицы
+    environment {
+        ENV_NAME = "${params.ENVIRONMENT}"
+        BRWS = "${params.BROWSER}"
+        HDLESS = "${params.HEADLESS}"
+        B_URL = "${params.BASE_URL}"
+        P_WORKERS = "${params.PARALLEL_WORKERS}"
+    }
+    
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+                
+                // Проверка что файлы загрузились
+                bat """
+                    echo CHECKING FILES
+                    dir /b
+                """
             }
         }
         
         stage('Setup Environment') {
             steps {
-                powershell '''
-                    Write-Host "=== НАСТРОЙКА ОКРУЖЕНИЯ ДЛЯ WINDOWS ==="
-                    Write-Host "Окружение: $env:ENVIRONMENT"
-                    Write-Host "Браузер: $env:BROWSER"
-                    Write-Host "Headless: $env:HEADLESS"
-                    Write-Host "Base URL: $env:BASE_URL"
-                    Write-Host "Параллельных воркеров: $env:PARALLEL_WORKERS"
+                // Используем простой bat с ASCII символами
+                bat """
+                    echo === SETUP ENVIRONMENT ===
+                    echo Environment: %ENV_NAME%
+                    echo Browser: %BRWS%
+                    echo Headless: %HDLESS%
+                    echo Base URL: %B_URL%
                     
-                    # Создаем .env файл
-                    $envContent = @"
-ENVIRONMENT=$env:ENVIRONMENT
-BROWSER=$env:BROWSER
-HEADLESS=$env:HEADLESS
-BASE_URL=$env:BASE_URL
-STANDARD_USER=standard_user
-STANDARD_PASSWORD=secret_sauce
-TIMEOUT=10
-PAGE_LOAD_TIMEOUT=30
-GENERATE_ALLURE=true
-GENERATE_HTML=true
-SAVE_SCREENSHOTS=on_failure
-PARALLEL_WORKERS=$env:PARALLEL_WORKERS
-"@
+                    rem Create simple .env file without complex characters
+                    echo BASE_URL=%B_URL% > test_config.txt
+                    echo BROWSER=%BRWS% >> test_config.txt
+                    echo HEADLESS=%HDLESS% >> test_config.txt
+                    echo STANDARD_USER=standard_user >> test_config.txt
+                    echo STANDARD_PASSWORD=secret_sauce >> test_config.txt
                     
-                    $envContent | Out-File -FilePath .env -Encoding UTF8
-                    Write-Host "Содержимое .env:"
-                    Get-Content .env
-                '''
+                    type test_config.txt
+                """
             }
         }
         
         stage('Install Dependencies') {
             steps {
-                powershell '''
-                    Write-Host "=== УСТАНОВКА ЗАВИСИМОСТЕЙ ==="
+                bat """
+                    echo === INSTALL DEPENDENCIES ===
                     
-                    Write-Host "Проверяем Python..."
+                    echo Checking Python...
                     python --version
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Host "Python не найден, проверьте PATH" -ForegroundColor Red
+                    if errorlevel 1 (
+                        echo ERROR: Python not found
                         exit 1
-                    }
+                    )
                     
-                    Write-Host "Обновляем pip..."
+                    echo Updating pip...
                     python -m pip install --upgrade pip
                     
-                    Write-Host "Устанавливаем зависимости..."
-                    pip install selenium webdriver-manager pytest pytest-html allure-pytest pytest-xdist python-dotenv
+                    echo Installing dependencies...
+                    pip install selenium webdriver-manager pytest pytest-html
                     
-                    Write-Host "Список установленных пакетов:"
-                    pip list | Select-String -Pattern "selenium|pytest|allure"
-                '''
+                    echo Installed packages:
+                    pip list | findstr /i "selenium pytest"
+                """
             }
         }
         
         stage('Run Tests') {
             steps {
-                powershell '''
-                    Write-Host "=== ЗАПУСК ТЕСТОВ ==="
+                bat """
+                    echo === RUNNING TESTS ===
                     
-                    Write-Host "Создаем директории для отчетов..."
-                    if (!(Test-Path "reports")) { New-Item -ItemType Directory -Path "reports" }
-                    if (!(Test-Path "reports\\allure-results")) { New-Item -ItemType Directory -Path "reports\\allure-results" }
-                    if (!(Test-Path "reports\\html")) { New-Item -ItemType Directory -Path "reports\\html" }
+                    echo Creating report directories...
+                    if not exist reports mkdir reports
+                    if not exist reports\\html mkdir reports\\html
                     
-                    Write-Host "Запускаем тесты..."
-                    $testCommand = @"
-python -m pytest tests/ `
-    --junitxml=reports\\junit.xml `
-    --html=reports\\html\\report.html `
-    --self-contained-html `
-    -n $env:PARALLEL_WORKERS `
-    --timeout=300 `
-    -v
-"@
+                    echo Running tests with %P_WORKERS% workers...
+                    python -m pytest tests/ ^
+                        --junitxml=reports\\junit.xml ^
+                        --html=reports\\html\\report.html ^
+                        --self-contained-html ^
+                        -n %P_WORKERS% ^
+                        --timeout=300 ^
+                        -v
                     
-                    Invoke-Expression $testCommand
-                    
-                    Write-Host "Код завершения тестов: $LASTEXITCODE"
-                '''
+                    echo Exit code: %ERRORLEVEL%
+                """
             }
         }
     }
     
     post {
         always {
-            archiveArtifacts artifacts: 'reports\\**\\*', fingerprint: true
+            // Archive reports if they exist
+            script {
+                try {
+                    if (fileExists('reports/html/report.html')) {
+                        archiveArtifacts artifacts: 'reports/**/*', fingerprint: true
+                        
+                        publishHTML(target: [
+                            reportDir: 'reports/html',
+                            reportFiles: 'report.html',
+                            reportName: 'Test Report',
+                            keepAll: true
+                        ])
+                    }
+                } catch (Exception e) {
+                    echo "Error archiving reports: ${e}"
+                }
+            }
             
-            publishHTML(target: [
-                reportDir: 'reports/html',
-                reportFiles: 'report.html',
-                reportName: 'HTML Test Report',
-                keepAll: true
-            ])
-            
-            powershell '''
-                Write-Host "=== ОЧИСТКА ==="
-                Write-Host "Удаляем временные файлы..."
-                if (Test-Path ".env") { Remove-Item ".env" }
-                Write-Host "Готово!"
-            '''
+            // Cleanup
+            bat """
+                echo === CLEANUP ===
+                del test_config.txt 2>nul
+                echo Done
+            """
+        }
+        
+        success {
+            echo "TESTS PASSED SUCCESSFULLY"
+        }
+        
+        failure {
+            echo "TESTS FAILED"
         }
     }
 }
