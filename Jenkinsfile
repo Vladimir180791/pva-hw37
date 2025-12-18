@@ -9,6 +9,7 @@ pipeline {
         string(name: 'PARALLEL_WORKERS', defaultValue: '2', description: 'Number of parallel workers')
     }
     
+    // Используем английские имена переменных без кириллицы
     environment {
         ENV_NAME = "${params.ENVIRONMENT}"
         BRWS = "${params.BROWSER}"
@@ -22,6 +23,7 @@ pipeline {
             steps {
                 checkout scm
                 
+                // Проверка что файлы загрузились
                 bat """
                     echo CHECKING FILES
                     dir /b
@@ -29,45 +31,24 @@ pipeline {
             }
         }
         
-        stage('Check Python Version') {
-            steps {
-                bat """
-                    echo === CHECKING PYTHON VERSION ===
-                    python --version
-                    
-                    rem Проверяем что это не альфа/бета версия
-                    python -c "import sys; print(f'Python {sys.version}'); exit(0) if sys.version_info[0:2] == (3, 11) else exit(1)"
-                    if errorlevel 1 (
-                        echo WARNING: Python version is not 3.11.x
-                        echo Current version may have compatibility issues
-                        echo Consider installing Python 3.11.9 for better compatibility
-                    )
-                """
-            }
-        }
-        
         stage('Setup Environment') {
             steps {
+                // Используем простой bat с ASCII символами
                 bat """
                     echo === SETUP ENVIRONMENT ===
                     echo Environment: %ENV_NAME%
                     echo Browser: %BRWS%
                     echo Headless: %HDLESS%
                     echo Base URL: %B_URL%
-                    echo Parallel Workers: %P_WORKERS%
                     
-                    rem Create .env file with all required variables
-                    echo BASE_URL=%B_URL% > .env
-                    echo BROWSER=%BRWS% >> .env
-                    echo HEADLESS=%HDLESS% >> .env
-                    echo ENVIRONMENT=%ENV_NAME% >> .env
-                    echo STANDARD_USER=standard_user >> .env
-                    echo STANDARD_PASSWORD=secret_sauce >> .env
-                    echo TIMEOUT=10 >> .env
-                    echo PARALLEL_WORKERS=%P_WORKERS% >> .env
+                    rem Create simple .env file without complex characters
+                    echo BASE_URL=%B_URL% > test_config.txt
+                    echo BROWSER=%BRWS% >> test_config.txt
+                    echo HEADLESS=%HDLESS% >> test_config.txt
+                    echo STANDARD_USER=standard_user >> test_config.txt
+                    echo STANDARD_PASSWORD=secret_sauce >> test_config.txt
                     
-                    echo === .env file content ===
-                    type .env
+                    type test_config.txt
                 """
             }
         }
@@ -87,14 +68,8 @@ pipeline {
                     echo Updating pip...
                     python -m pip install --upgrade pip
                     
-                    echo Installing dependencies with specific versions for compatibility...
-                    rem Устанавливаем конкретные версии для совместимости
-                    pip install selenium==4.15.0
-                    pip install webdriver-manager==4.0.1
-                    pip install pytest==7.4.4
-                    pip install pytest-html==4.1.1
-                    pip install pytest-xdist==3.5.0
-                    pip install pytest-timeout==2.2.0
+                    echo Installing dependencies...
+                    pip install selenium webdriver-manager pytest pytest-html
                     
                     echo Installed packages:
                     pip list | findstr /i "selenium pytest"
@@ -102,43 +77,18 @@ pipeline {
             }
         }
         
-        stage('Run Simple Test') {
+        stage('Run Tests') {
             steps {
                 bat """
-                    echo === RUNNING SIMPLE TEST ===
-                    
-                    echo Creating simple test to verify installation...
-                    echo import pytest > simple_test.py
-                    echo import selenium >> simple_test.py
-                    echo def test_import(): >> simple_test.py
-                    echo     import selenium >> simple_test.py
-                    echo     import pytest >> simple_test.py
-                    echo     assert True >> simple_test.py
-                    
-                    echo Running test...
-                    python -m pytest simple_test.py -v
-                    
-                    del simple_test.py 2>nul
-                """
-            }
-        }
-        
-        stage('Run Real Tests') {
-            when {
-                expression { return true }
-            }
-            steps {
-                bat """
-                    echo === RUNNING REAL TESTS ===
+                    echo === RUNNING TESTS ===
                     
                     echo Creating report directories...
                     if not exist reports mkdir reports
                     if not exist reports\\html mkdir reports\\html
-                    if not exist reports\\xml mkdir reports\\xml
                     
                     echo Running tests with %P_WORKERS% workers...
                     python -m pytest tests/ ^
-                        --junitxml=reports\\xml\\junit.xml ^
+                        --junitxml=reports\\junit.xml ^
                         --html=reports\\html\\report.html ^
                         --self-contained-html ^
                         -n %P_WORKERS% ^
@@ -146,15 +96,6 @@ pipeline {
                         -v
                     
                     echo Exit code: %ERRORLEVEL%
-                    
-                    rem Если тесты упали, покажем что в папке tests
-                    if %ERRORLEVEL% NEQ 0 (
-                        echo === TEST FAILURE DEBUG INFO ===
-                        echo Checking tests directory...
-                        dir tests\\ /b
-                        echo Current directory:
-                        dir /b
-                    )
                 """
             }
         }
@@ -162,6 +103,7 @@ pipeline {
     
     post {
         always {
+            // Archive reports if they exist
             script {
                 try {
                     if (fileExists('reports/html/report.html')) {
@@ -174,19 +116,15 @@ pipeline {
                             keepAll: true
                         ])
                     }
-                    
-                    // Archive JUnit reports
-                    if (fileExists('reports/xml/junit.xml')) {
-                        junit 'reports/xml/junit.xml'
-                    }
                 } catch (Exception e) {
                     echo "Error archiving reports: ${e}"
                 }
             }
             
+            // Cleanup
             bat """
                 echo === CLEANUP ===
-                del .env 2>nul
+                del test_config.txt 2>nul
                 echo Done
             """
         }
