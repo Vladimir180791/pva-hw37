@@ -15,12 +15,12 @@ pipeline {
         HDLESS = "${params.HEADLESS}"
         B_URL = "${params.BASE_URL}"
         P_WORKERS = "${params.PARALLEL_WORKERS}"
-        // Указываем конкретный путь к Python, если он установлен
-        PYTHON_PATH = "C:\\Python311\\python.exe"  // Измените путь, если Python установлен в другом месте
+        // Указываем путь к Python (из логов видно, что Python есть в C:\Program Files\Python311\python.exe)
+        PYTHON_EXE = "python"  // Используем просто python, так как он в PATH
     }
     
     stages {
-        stage('Checkout') {
+        stage('Checkout and Setup') {
             steps {
                 checkout scm
                 
@@ -29,72 +29,24 @@ pipeline {
                     dir /b
                     echo.
                     echo === CHECKING PYTHON INSTALLATIONS ===
-                    where python 2>nul || echo Python not found in PATH
-                    where python3 2>nul || echo Python3 not found in PATH
-                """
-            }
-        }
-        
-        stage('Check and Install Python') {
-            steps {
-                script {
-                    // Проверяем установлен ли Python
-                    def pythonInstalled = bat(
-                        script: 'where python 2>nul',
-                        returnStatus: true
-                    ) == 0
+                    where python
+                    python --version
                     
-                    if (!pythonInstalled) {
-                        echo "Python not found in PATH. Trying to find in common locations..."
-                        
-                        // Проверяем стандартные места установки Python
-                        def pythonPaths = [
-                            'C:\\Python311\\python.exe',
-                            'C:\\Python310\\python.exe',
-                            'C:\\Python39\\python.exe',
-                            'C:\\Python38\\python.exe',
-                            'C:\\Python\\python.exe',
-                            'C:\\Program Files\\Python311\\python.exe',
-                            'C:\\Program Files\\Python310\\python.exe',
-                            'C:\\Program Files\\Python39\\python.exe',
-                            'C:\\Program Files\\Python38\\python.exe',
-                            'C:\\Program Files\\Python\\python.exe'
-                        ]
-                        
-                        def foundPython = false
-                        for (path in pythonPaths) {
-                            def exists = bat(
-                                script: "if exist \"${path}\" echo FOUND",
-                                returnStatus: true
-                            ) == 0
-                            
-                            if (exists) {
-                                env.PYTHON_EXE = path
-                                foundPython = true
-                                echo "Found Python at: ${path}"
-                                break
-                            }
-                        }
-                        
-                        if (!foundPython) {
-                            echo "Python not found. Attempting to install..."
-                            // Добавляем опциональную установку Python через chocolatey
-                            bat '''
-                                echo === ATTEMPTING TO INSTALL PYTHON ===
-                                echo Please ensure Python 3.11+ is installed on the system
-                                echo.
-                                echo To install Python:
-                                echo 1. Download from https://www.python.org/downloads/
-                                echo 2. Run installer with "Add Python to PATH" checked
-                                echo 3. Or install using chocolatey: choco install python --version=3.11.9
-                                echo.
-                                exit 1
-                            '''
-                        }
-                    } else {
-                        env.PYTHON_EXE = "python"
-                    }
-                }
+                    echo === SETTING PYTHON PATH ===
+                    rem Проверяем доступность Python
+                    python --version
+                    if errorlevel 1 (
+                        echo ERROR: Python not accessible via 'python' command
+                        echo Trying direct path...
+                        "C:\\Program Files\\Python311\\python.exe" --version
+                        if errorlevel 1 (
+                            echo ERROR: Python not found
+                            exit 1
+                        ) else (
+                            echo Found Python at C:\\Program Files\\Python311\\python.exe
+                        )
+                    )
+                """
             }
         }
         
@@ -108,9 +60,15 @@ pipeline {
                     echo Base URL: %B_URL%
                     echo Parallel Workers: %P_WORKERS%
                     
-                    rem Проверяем Python
-                    echo Checking Python executable...
-                    "%PYTHON_EXE%" --version || echo Python not accessible
+                    rem Сначала определим правильный путь к Python
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
+                    
+                    echo Using Python executable: %PYTHON_EXE%
                     
                     rem Create .env file with all required variables
                     echo BASE_URL=%B_URL% > .env
@@ -133,39 +91,30 @@ pipeline {
                 bat """
                     echo === INSTALL DEPENDENCIES ===
                     
-                    echo Checking Python executable: %PYTHON_EXE%
-                    "%PYTHON_EXE%" --version
+                    rem Определяем Python executable
+                    python --version
                     if errorlevel 1 (
-                        echo ERROR: Python not found or not accessible
-                        echo Trying alternative methods...
-                        
-                        rem Попробуем найти python через py launcher
-                        py --version
-                        if errorlevel 1 (
-                            echo ERROR: No Python installation found
-                            echo Please install Python 3.11 or higher
-                            exit 1
-                        ) else (
-                            set PYTHON_EXE=py
-                        )
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
                     )
                     
                     echo Using Python: %PYTHON_EXE%
                     
                     echo Updating pip...
-                    "%PYTHON_EXE%" -m pip install --upgrade pip
+                    %PYTHON_EXE% -m pip install --upgrade pip
                     
                     echo Installing dependencies with specific versions for compatibility...
                     rem Устанавливаем конкретные версии для совместимости
-                    "%PYTHON_EXE%" -m pip install selenium==4.15.0
-                    "%PYTHON_EXE%" -m pip install webdriver-manager==4.0.1
-                    "%PYTHON_EXE%" -m pip install pytest==7.4.4
-                    "%PYTHON_EXE%" -m pip install pytest-html==4.1.1
-                    "%PYTHON_EXE%" -m pip install pytest-xdist==3.5.0
-                    "%PYTHON_EXE%" -m pip install pytest-timeout==2.2.0
+                    %PYTHON_EXE% -m pip install selenium==4.15.0
+                    %PYTHON_EXE% -m pip install webdriver-manager==4.0.1
+                    %PYTHON_EXE% -m pip install pytest==7.4.4
+                    %PYTHON_EXE% -m pip install pytest-html==4.1.1
+                    %PYTHON_EXE% -m pip install pytest-xdist==3.5.0
+                    %PYTHON_EXE% -m pip install pytest-timeout==2.2.0
                     
                     echo Installed packages:
-                    "%PYTHON_EXE%" -m pip list | findstr /i "selenium pytest webdriver"
+                    %PYTHON_EXE% -m pip list | findstr /i "selenium pytest webdriver"
                 """
             }
         }
@@ -174,6 +123,14 @@ pipeline {
             steps {
                 bat """
                     echo === VERIFYING INSTALLATION ===
+                    
+                    rem Определяем Python executable
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
                     
                     echo Creating simple test to verify installation...
                     echo import pytest > simple_test.py
@@ -189,7 +146,7 @@ pipeline {
                     echo     assert True >> simple_test.py
                     
                     echo Running verification test...
-                    "%PYTHON_EXE%" -m pytest simple_test.py -v
+                    %PYTHON_EXE% -m pytest simple_test.py -v
                     
                     del simple_test.py 2>nul
                 """
@@ -197,12 +154,17 @@ pipeline {
         }
         
         stage('Run Tests') {
-            when {
-                expression { return true }
-            }
             steps {
                 bat """
                     echo === RUNNING REAL TESTS ===
+                    
+                    rem Определяем Python executable
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
                     
                     echo Creating report directories...
                     if not exist reports mkdir reports
@@ -210,7 +172,7 @@ pipeline {
                     if not exist reports\\xml mkdir reports\\xml
                     
                     echo Running tests with %P_WORKERS% workers...
-                    "%PYTHON_EXE%" -m pytest tests/ ^
+                    %PYTHON_EXE% -m pytest tests/ ^
                         --junitxml=reports\\xml\\junit.xml ^
                         --html=reports\\html\\report.html ^
                         --self-contained-html ^
@@ -228,8 +190,12 @@ pipeline {
                         echo Current directory:
                         dir /b
                         echo Python path:
-                        where python 2>nul
+                        where python
                         echo Python executable used: %PYTHON_EXE%
+                        echo === TESTS CONTENT ===
+                        if exist tests\\*.py (
+                            type tests\\*.py
+                        )
                     )
                 """
             }
@@ -280,9 +246,12 @@ pipeline {
                 echo %PATH%
                 echo.
                 echo Python installations:
-                where python 2>nul || echo Python not found
-                where python3 2>nul || echo Python3 not found
-                where py 2>nul || echo py launcher not found
+                where python
+                echo.
+                echo Files in tests directory:
+                if exist tests\\ (
+                    dir tests\\ /b
+                )
             """
         }
     }
