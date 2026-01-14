@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  tests:
+    build: .
+    container_name: saucedemo-tests
+    environment:
+      - BROWSER=chrome
+      - HEADLESS=true
+    volumes:
+      - ./reports:/app/reports
+    depends_on:
+      - selenoid
+  
+  selenoid:
+    image: aerokube/selenoid:latest
+    container_name: selenoid
+    ports:
+      - "4444:4444"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./browsers.json:/etc/selenoid/browsers.json:ro
+    command: ["-conf", "/etc/selenoid/browsers.json", "-limit", "4"]
