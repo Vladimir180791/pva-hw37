@@ -2,7 +2,6 @@
 import pytest
 import time
 import os
-import sys
 import stat
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -11,76 +10,30 @@ from webdriver_manager.chrome import ChromeDriverManager
 import warnings
 
 def get_chrome_driver_path():
-    """Получить корректный путь к chromedriver с учетом платформы"""
+    """Получить корректный путь к chromedriver с учетом новой структуры архива"""
     
-    print("Получаем путь к ChromeDriver...")
+    # Установка через WebDriverManager
+    driver_path = ChromeDriverManager().install()
     
-    # Для Windows используем force_install=True и явно указываем версию
-    try:
-        # Используем фиксированную версию для стабильности
-        driver_path = ChromeDriverManager(driver_version="114.0.5735.90").install()
-    except Exception as e:
-        print(f"Ошибка при установке ChromeDriver: {e}")
-        # Пробуем без указания версии
-        driver_path = ChromeDriverManager().install()
-    
-    print(f"WebDriverManager вернул путь: {driver_path}")
-    
-    # Проверяем, существует ли файл
-    if os.path.exists(driver_path):
-        print(f"✓ ChromeDriver найден по пути: {driver_path}")
-        return driver_path
-    
-    # Если путь не существует, ищем драйвер в различных местах
+    # Путь к директории с драйвером
     driver_dir = os.path.dirname(driver_path)
     
-    # Возможные пути (в зависимости от платформы)
-    possible_paths = []
+    # Проверяем новую структуру (chromedriver внутри подпапки)
+    possible_paths = [
+        os.path.join(driver_dir, "chromedriver-linux64", "chromedriver"),
+        os.path.join(driver_dir, "chromedriver"),
+        driver_path
+    ]
     
-    if sys.platform == "win32":  # Windows
-        possible_paths = [
-            os.path.join(driver_dir, "chromedriver.exe"),
-            os.path.join(driver_dir, "chromedriver-win64", "chromedriver.exe"),
-            os.path.join(driver_dir, "chromedriver-win32", "chromedriver.exe"),
-            driver_path,
-            r"C:\Windows\system32\config\systemprofile\.wdm\drivers\chromedriver\win64\latest\chromedriver.exe",
-            r"C:\Users\jenkins\.wdm\drivers\chromedriver\win64\latest\chromedriver.exe"
-        ]
-    else:  # Linux/Mac
-        possible_paths = [
-            os.path.join(driver_dir, "chromedriver"),
-            os.path.join(driver_dir, "chromedriver-linux64", "chromedriver"),
-            os.path.join(driver_dir, "chromedriver-mac-arm64", "chromedriver"),
-            driver_path
-        ]
-    
-    print(f"Проверяем возможные пути: {possible_paths}")
-    
+    # Ищем исполняемый файл
     for path in possible_paths:
         if os.path.exists(path):
-            # Для Unix-систем делаем файл исполняемым
-            if sys.platform != "win32":
-                try:
-                    os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                except Exception as e:
-                    print(f"Не удалось изменить права файла: {e}")
-            
-            print(f"✓ ChromeDriver найден по альтернативному пути: {path}")
+            # Делаем файл исполняемым
+            os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+            print(f"✓ Найден ChromeDriver: {path}")
             return path
     
-    # Если ничего не нашли, пробуем использовать webdriver-manager напрямую
-    print("⚠️ ChromeDriver не найден в файловой системе. Пробуем альтернативный подход...")
-    
-    # Создаем временный драйвер для диагностики
-    try:
-        from webdriver_manager.core.os_manager import ChromeType
-        
-        driver_path = ChromeDriverManager(chrome_type=ChromeType.GOOGLE).install()
-        print(f"✓ ChromeDriver получен через альтернативный метод: {driver_path}")
-        return driver_path
-    except Exception as e:
-        print(f"❌ Все методы поиска ChromeDriver провалились: {e}")
-        raise FileNotFoundError(f"ChromeDriver не найден. Проверенные пути: {possible_paths}")
+    raise FileNotFoundError(f"ChromeDriver не найден. Проверенные пути: {possible_paths}")
 
 @pytest.fixture(scope="function")
 def driver():
@@ -90,134 +43,122 @@ def driver():
     print("ИНИЦИАЛИЗАЦИЯ ДРАЙВЕРА")
     print("="*60)
     
-    # Получаем настройки из переменных окружения
-    headless_mode = os.getenv("HEADLESS", "true").lower() == "true"
-    browser = os.getenv("BROWSER", "chrome")
+    # Получаем правильный путь к драйверу
+    driver_path = get_chrome_driver_path()
     
-    print(f"Браузер: {browser}")
-    print(f"Режим headless: {headless_mode}")
+    # Создаем сервис
+    service = Service(driver_path)
     
-    if browser.lower() == "chrome":
-        # Получаем правильный путь к драйверу
-        driver_path = get_chrome_driver_path()
-        
-        # Создаем сервис
-        service = Service(driver_path)
-        
-        # Настройки Chrome
-        options = Options()
-        
-        if headless_mode:
-            options.add_argument("--headless=new")
-        
-        # Общие настройки для стабильности
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-        
-        # Для Windows добавляем специфичные настройки
-        if sys.platform == "win32":
-            options.add_argument("--disable-software-rasterizer")
-            options.add_argument("--disable-extensions")
-            options.add_argument("--disable-logging")
-            options.add_argument("--log-level=3")
-        else:
-            # Для Linux (Codespaces)
-            options.add_argument("--no-zygote")
-            options.add_argument("--single-process")
-        
-        # Отключаем блокировку автоматизации
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
-        # Игнорируем SSL ошибки
-        options.add_argument("--ignore-certificate-errors")
-        options.add_argument("--ignore-ssl-errors")
-        
-        # Создаем драйвер с обработкой ошибок
-        print("Создаем драйвер Chrome...")
-        try:
-            driver = webdriver.Chrome(service=service, options=options)
-            print("✓ Драйвер успешно создан")
-        except Exception as e:
-            print(f"❌ Ошибка при создании драйвера: {e}")
-            print("Пробуем создать драйвер без сервиса...")
-            try:
-                driver = webdriver.Chrome(options=options)
-                print("✓ Драйвер создан без сервиса")
-            except Exception as e2:
-                print(f"❌ Критическая ошибка: {e2}")
-                print("Пробуем использовать Firefox как запасной вариант...")
-                from selenium.webdriver.firefox.options import Options as FirefoxOptions
-                from selenium.webdriver.firefox.service import Service as FirefoxService
-                from webdriver_manager.firefox import GeckoDriverManager
-                
-                # Настраиваем Firefox
-                firefox_options = FirefoxOptions()
-                if headless_mode:
-                    firefox_options.add_argument("--headless")
-                
-                firefox_service = FirefoxService(GeckoDriverManager().install())
-                driver = webdriver.Firefox(service=firefox_service, options=firefox_options)
-                print("✓ Драйвер Firefox создан")
+    # Настройки Chrome для GitHub Codespaces
+    options = Options()
+    options.add_argument("--headless=new")  # Режим без графического интерфейса
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
     
-    else:
-        # Для Firefox
-        from selenium.webdriver.firefox.options import Options as FirefoxOptions
-        from selenium.webdriver.firefox.service import Service as FirefoxService
-        from webdriver_manager.firefox import GeckoDriverManager
-        
-        firefox_options = FirefoxOptions()
-        if headless_mode:
-            firefox_options.add_argument("--headless")
-        
-        firefox_service = FirefoxService(GeckoDriverManager().install())
-        driver = webdriver.Firefox(service=firefox_service, options=firefox_options)
+    # КРИТИЧЕСКИ ВАЖНЫЕ НАСТРОЙКИ ДЛЯ CODESPACES
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--no-zygote")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-dev-shm-usage")
     
-    # КОНТРОЛЬНАЯ ТОЧКА: Устанавливаем таймауты
-    timeout = int(os.getenv("TIMEOUT", "30"))
-    driver.set_page_load_timeout(timeout)
-    driver.set_script_timeout(timeout)
-    driver.implicitly_wait(10)
+    # Отключаем блокировку headless-браузеров
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
+    
+    # Игнорируем SSL ошибки (на всякий случай)
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--ignore-ssl-errors")
+    
+    # Создаем драйвер
+    print("Создаем драйвер Chrome...")
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    # КОНТРОЛЬНАЯ ТОЧКА: Устанавливаем таймаут загрузки страницы
+    driver.set_page_load_timeout(30)
+    driver.set_script_timeout(30)
     
     # ОТКРЫВАЕМ SAUCEDEMO.COM
-    base_url = os.getenv("BASE_URL", "https://www.saucedemo.com/")
-    print(f"\nОткрываем: {base_url}")
+    target_url = "https://www.saucedemo.com/"
+    print(f"\nОткрываем: {target_url}")
     
     try:
-        driver.get(base_url)
+        # 1. Пробуем стандартный GET
+        driver.get(target_url)
         print(f"✓ Страница запрошена")
         
-        # Ждем загрузки
-        time.sleep(2)
+        # 2. Ждем загрузки
+        time.sleep(3)  # Фиксированная задержка для стабильности
         
+        # 3. Проверяем, что загрузилось
         print(f"✓ Текущий URL: {driver.current_url}")
         print(f"✓ Заголовок страницы: '{driver.title}'")
         
-        # Делаем скриншот для диагностики
-        try:
-            screenshot_dir = os.path.join(os.getcwd(), "screenshots")
-            os.makedirs(screenshot_dir, exist_ok=True)
-            screenshot_path = os.path.join(screenshot_dir, "initial_page.png")
-            driver.save_screenshot(screenshot_path)
-            print(f"✓ Скриншот сохранен: {screenshot_path}")
-        except Exception as e:
-            print(f"⚠️ Не удалось сделать скриншот: {e}")
+        # 4. Проверяем, что это действительно saucedemo.com
+        if driver.current_url == "data:,":
+            print("❌ КРИТИЧЕСКАЯ ОШИБКА: Загружена пустая страница data:,")
+            print("   Пробуем альтернативный подход с явным ожиданием...")
+            
+            # Пробуем еще раз с другим подходом
+            driver.execute_script("window.location.href = 'https://www.saucedemo.com/';")
+            time.sleep(5)
+            print(f"   Новый URL: {driver.current_url}")
         
+        # 5. Делаем скриншот для диагностики
+        screenshot_path = "/tmp/saucedemo_check.png"
+        driver.save_screenshot(screenshot_path)
+        print(f"✓ Скриншот сохранен: {screenshot_path}")
+        
+        # 6. Быстрая проверка элементов
+        try:
+            # Ищем любой контент на странице
+            body = driver.find_element("tag name", "body")
+            print(f"✓ Найдено тело страницы, текст: '{body.text[:100]}...'")
+            
+            # Считаем элементы
+            all_elements = driver.find_elements("xpath", "//*")
+            print(f"✓ Всего элементов на странице: {len(all_elements)}")
+            
+            inputs = driver.find_elements("tag name", "input")
+            print(f"✓ Input элементов: {len(inputs)}")
+            
+            if len(inputs) > 0:
+                for i, inp in enumerate(inputs[:3]):
+                    print(f"  Input #{i+1}: id='{inp.get_attribute('id')}', "
+                          f"type='{inp.get_attribute('type')}'")
+            
+        except Exception as e:
+            print(f"⚠️  Не удалось найти элементы: {e}")
+            
     except Exception as e:
         print(f"❌ ОШИБКА при загрузке страницы: {e}")
         
-        # Пробуем загрузить тестовую страницу
+        # Пробуем загрузить простую страницу для проверки драйвера
         print("\nПробуем загрузить example.com для диагностики...")
         try:
             driver.get("http://example.com")
             time.sleep(2)
             print(f"✓ Example.com загружен: {driver.current_url}")
             print(f"✓ Заголовок: '{driver.title}'")
+            
+            if "saucedemo.com" not in driver.current_url:
+                print("\n⚠️  ВНИМАНИЕ: Драйвер работает, но saucedemo.com недоступен.")
+                print("   Возможные причины:")
+                print("   1. Проблемы с сетью в Codespace")
+                print("   2. Сайт временно недоступен")
+                print("   3. Блокировка headless-браузеров")
+                
+                # Сохраняем HTML для анализа
+                html_path = "/tmp/page_source.html"
+                with open(html_path, "w", encoding="utf-8") as f:
+                    f.write(driver.page_source[:2000])
+                print(f"✓ HTML сохранен: {html_path}")
+                
         except Exception as e2:
-            print(f"❌ Критическая ошибка: {e2}")
+            print(f"❌ Даже example.com не загружается: {e2}")
             driver.quit()
             raise
     
@@ -225,18 +166,13 @@ def driver():
     yield driver
     
     print("\nЗакрываем драйвер...")
-    try:
-        driver.quit()
-        print("✓ Драйвер закрыт")
-    except Exception as e:
-        print(f"⚠️ Ошибка при закрытии драйвера: {e}")
-    
+    driver.quit()
     print("="*60)
 
 @pytest.fixture
 def base_url():
     """Базовый URL приложения"""
-    return os.getenv("BASE_URL", "https://www.saucedemo.com/")
+    return "https://www.saucedemo.com/"
 
 @pytest.fixture
 def user_credentials():
@@ -250,6 +186,6 @@ def user_credentials():
 
 @pytest.fixture
 def login_page(driver, base_url):
-    """Фикстура LoginPage"""
+    """Фикстура LoginPage (для обратной совместимости)"""
     from pages.login_page import LoginPage
     return LoginPage(driver)
