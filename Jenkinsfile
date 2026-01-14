@@ -6,7 +6,7 @@ pipeline {
         choice(name: 'BROWSER', choices: ['chrome', 'firefox'], description: 'Browser for tests')
         choice(name: 'HEADLESS', choices: ['true', 'false'], description: 'Run in headless mode')
         string(name: 'BASE_URL', defaultValue: 'https://www.saucedemo.com', description: 'Application URL')
-        string(name: 'TIMEOUT', defaultValue: '30', description: 'Timeout for page load (seconds)')
+        string(name: 'PARALLEL_WORKERS', defaultValue: '2', description: 'Number of parallel workers')
     }
     
     environment {
@@ -14,21 +14,38 @@ pipeline {
         BRWS = "${params.BROWSER}"
         HDLESS = "${params.HEADLESS}"
         B_URL = "${params.BASE_URL}"
-        TIMEOUT_VAL = "${params.TIMEOUT}"
+        P_WORKERS = "${params.PARALLEL_WORKERS}"
+        // Указываем путь к Python (из логов видно, что Python есть в C:\Program Files\Python311\python.exe)
+        PYTHON_EXE = "python"  // Используем просто python, так как он в PATH
     }
     
     stages {
-        stage('Checkout') {
+        stage('Checkout and Setup') {
             steps {
                 checkout scm
                 
                 bat """
-                    echo === WORKSPACE FILES ===
+                    echo === CHECKING FILES IN WORKSPACE ===
                     dir /b
                     echo.
-                    echo === PYTHON INFO ===
+                    echo === CHECKING PYTHON INSTALLATIONS ===
+                    where python
                     python --version
-                    python -c "import sys; print(f'Platform: {sys.platform}')"
+                    
+                    echo === SETTING PYTHON PATH ===
+                    rem Проверяем доступность Python
+                    python --version
+                    if errorlevel 1 (
+                        echo ERROR: Python not accessible via 'python' command
+                        echo Trying direct path...
+                        "C:\\Program Files\\Python311\\python.exe" --version
+                        if errorlevel 1 (
+                            echo ERROR: Python not found
+                            exit 1
+                        ) else (
+                            echo Found Python at C:\\Program Files\\Python311\\python.exe
+                        )
+                    )
                 """
             }
         }
@@ -41,31 +58,30 @@ pipeline {
                     echo Browser: %BRWS%
                     echo Headless: %HDLESS%
                     echo Base URL: %B_URL%
-                    echo Timeout: %TIMEOUT_VAL%
+                    echo Parallel Workers: %P_WORKERS%
                     
-                    rem Создаем .env файл
+                    rem Сначала определим правильный путь к Python
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
+                    
+                    echo Using Python executable: %PYTHON_EXE%
+                    
+                    rem Create .env file with all required variables
                     echo BASE_URL=%B_URL% > .env
                     echo BROWSER=%BRWS% >> .env
                     echo HEADLESS=%HDLESS% >> .env
                     echo ENVIRONMENT=%ENV_NAME% >> .env
                     echo STANDARD_USER=standard_user >> .env
                     echo STANDARD_PASSWORD=secret_sauce >> .env
-                    echo TIMEOUT=%TIMEOUT_VAL% >> .env
+                    echo TIMEOUT=10 >> .env
+                    echo PARALLEL_WORKERS=%P_WORKERS% >> .env
                     
-                    echo === .env content ===
+                    echo === .env file content ===
                     type .env
-                    
-                    echo === CHROME CHECK ===
-                    where chrome 2>nul && (
-                        echo ✓ Chrome found in PATH
-                        chrome --version
-                    ) || (
-                        echo ⚠️ Chrome not found in PATH
-                        echo Checking registry...
-                        reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul && (
-                            for /f "tokens=2*" %%a in ('reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version 2^>nul') do echo Chrome version: %%b
-                        ) || echo Chrome not installed
-                    )
                 """
             }
         }
@@ -75,42 +91,64 @@ pipeline {
                 bat """
                     echo === INSTALL DEPENDENCIES ===
                     
+                    rem Определяем Python executable
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
+                    
+                    echo Using Python: %PYTHON_EXE%
+                    
                     echo Updating pip...
-                    python -m pip install --upgrade pip
+                    %PYTHON_EXE% -m pip install --upgrade pip
                     
-                    echo Installing dependencies...
-                    python -m pip install selenium==4.15.0
-                    python -m pip install webdriver-manager==4.0.1
-                    python -m pip install pytest==7.4.4
-                    python -m pip install pytest-html==4.1.1
-                    python -m pip install pytest-xdist==3.5.0
-                    python -m pip install python-dotenv==1.0.0
+                    echo Installing dependencies with specific versions for compatibility...
+                    rem Устанавливаем конкретные версии для совместимости
+                    %PYTHON_EXE% -m pip install selenium==4.15.0
+                    %PYTHON_EXE% -m pip install webdriver-manager==4.0.1
+                    %PYTHON_EXE% -m pip install pytest==7.4.4
+                    %PYTHON_EXE% -m pip install pytest-html==4.1.1
+                    %PYTHON_EXE% -m pip install pytest-xdist==3.5.0
+                    %PYTHON_EXE% -m pip install pytest-timeout==2.2.0
                     
-                    echo === Installed packages ===
-                    python -m pip list | findstr /i "selenium pytest webdriver"
+                    echo Installed packages:
+                    %PYTHON_EXE% -m pip list | findstr /i "selenium pytest webdriver"
                 """
             }
         }
         
-        stage('Clean WebDriver Cache') {
+        stage('Verify Installation') {
             steps {
                 bat """
-                    echo === CLEANING WEBDRIVER CACHE ===
+                    echo === VERIFYING INSTALLATION ===
                     
-                    echo Cleaning up WebDriver Manager cache...
-                    python -c "
-try:
-    from webdriver_manager.chrome import ChromeDriverManager
-    from webdriver_manager.firefox import GeckoDriverManager
-    ChromeDriverManager().clear_cache()
-    GeckoDriverManager().clear_cache()
-    print('✓ WebDriver cache cleaned')
-except Exception as e:
-    print(f'⚠️ Cache cleanup failed: {e}')
-"
+                    rem Определяем Python executable
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
                     
-                    echo Checking cache directory...
-                    dir "%USERPROFILE%\\.wdm" /s 2>nul | findstr /i chromedriver && echo ✓ WebDriver cache exists || echo ⚠️ WebDriver cache not found
+                    echo Creating simple test to verify installation...
+                    echo import pytest > simple_test.py
+                    echo import selenium.webdriver >> simple_test.py
+                    echo import sys >> simple_test.py
+                    echo def test_python_version(): >> simple_test.py
+                    echo     print(f"Python version: {sys.version}") >> simple_test.py
+                    echo     assert sys.version_info[0] == 3, "Python 3 required" >> simple_test.py
+                    echo def test_imports(): >> simple_test.py
+                    echo     import selenium >> simple_test.py
+                    echo     import pytest >> simple_test.py
+                    echo     import webdriver_manager >> simple_test.py
+                    echo     assert True >> simple_test.py
+                    
+                    echo Running verification test...
+                    %PYTHON_EXE% -m pytest simple_test.py -v
+                    
+                    del simple_test.py 2>nul
                 """
             }
         }
@@ -118,48 +156,45 @@ except Exception as e:
         stage('Run Tests') {
             steps {
                 bat """
-                    echo === RUNNING TESTS ===
+                    echo === RUNNING REAL TESTS ===
+                    
+                    rem Определяем Python executable
+                    python --version
+                    if errorlevel 1 (
+                        set PYTHON_EXE="C:\\Program Files\\Python311\\python.exe"
+                    ) else (
+                        set PYTHON_EXE=python
+                    )
                     
                     echo Creating report directories...
                     if not exist reports mkdir reports
                     if not exist reports\\html mkdir reports\\html
                     if not exist reports\\xml mkdir reports\\xml
-                    if not exist screenshots mkdir screenshots
                     
-                    echo Running tests...
-                    
-                    rem Устанавливаем переменные окружения для тестов
-                    set BASE_URL=%B_URL%
-                    set BROWSER=%BRWS%
-                    set HEADLESS=%HDLESS%
-                    set TIMEOUT=%TIMEOUT_VAL%
-                    
-                    python -m pytest tests/ ^
+                    echo Running tests with %P_WORKERS% workers...
+                    %PYTHON_EXE% -m pytest tests/ ^
                         --junitxml=reports\\xml\\junit.xml ^
                         --html=reports\\html\\report.html ^
                         --self-contained-html ^
-                        -v ^
-                        --tb=short
+                        -n %P_WORKERS% ^
+                        --timeout=300 ^
+                        -v
                     
                     echo Exit code: %ERRORLEVEL%
                     
+                    rem Если тесты упали, покажем что в папке tests
                     if %ERRORLEVEL% NEQ 0 (
-                        echo === DEBUG INFO ===
-                        echo Python version:
-                        python --version
-                        echo.
-                        echo Platform info:
-                        python -c "import platform; print(f'System: {platform.system()} {platform.release()}')"
-                        echo.
-                        echo Files in tests directory:
+                        echo === TEST FAILURE DEBUG INFO ===
+                        echo Checking tests directory...
                         dir tests\\ /b
-                        echo.
-                        echo Checking for screenshots...
-                        if exist screenshots\\*.png (
-                            echo Screenshots found:
-                            dir screenshots\\ /b
-                        ) else (
-                            echo No screenshots found
+                        echo Current directory:
+                        dir /b
+                        echo Python path:
+                        where python
+                        echo Python executable used: %PYTHON_EXE%
+                        echo === TESTS CONTENT ===
+                        if exist tests\\*.py (
+                            type tests\\*.py
                         )
                     )
                 """
@@ -171,7 +206,6 @@ except Exception as e:
         always {
             script {
                 try {
-                    // Архивируем отчеты и скриншоты
                     if (fileExists('reports/html/report.html')) {
                         archiveArtifacts artifacts: 'reports/**/*', fingerprint: true
                         
@@ -183,16 +217,9 @@ except Exception as e:
                         ])
                     }
                     
+                    // Archive JUnit reports
                     if (fileExists('reports/xml/junit.xml')) {
                         junit 'reports/xml/junit.xml'
-                    }
-                    
-                    // Архивируем скриншоты, если они есть
-                    if (fileExists('screenshots')) {
-                        def screenshots = findFiles(glob: 'screenshots/*.png')
-                        if (screenshots) {
-                            archiveArtifacts artifacts: 'screenshots/*.png', fingerprint: false
-                        }
                     }
                 } catch (Exception e) {
                     echo "Error archiving reports: ${e}"
@@ -201,46 +228,31 @@ except Exception as e:
             
             bat """
                 echo === CLEANUP ===
-                echo Cleaning up...
                 del .env 2>nul
                 echo Done
             """
         }
         
         success {
-            echo "✓ TESTS PASSED SUCCESSFULLY"
-            emailext (
-                subject: "✅ Tests PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "All tests passed successfully.\n\nBuild URL: ${env.BUILD_URL}",
-                to: 'vladimir@example.com'
-            )
+            echo "TESTS PASSED SUCCESSFULLY"
         }
         
         failure {
-            echo "✗ TESTS FAILED"
-            
-            // Дополнительная диагностика
+            echo "TESTS FAILED"
+            // Добавляем дополнительную информацию для диагностики
             bat """
-                echo === ADDITIONAL DIAGNOSTICS ===
-                echo Chrome installation check:
-                where chrome 2>nul || echo Chrome not found
+                echo === DIAGNOSTIC INFORMATION ===
+                echo System PATH:
+                echo %PATH%
                 echo.
-                echo WebDriver cache:
-                dir "%USERPROFILE%\\.wdm\\drivers\\chromedriver" /s 2>nul | findstr /i .exe || echo No ChromeDriver found
+                echo Python installations:
+                where python
                 echo.
-                echo Python packages:
-                python -m pip list | findstr selenium
+                echo Files in tests directory:
+                if exist tests\\ (
+                    dir tests\\ /b
+                )
             """
-            
-            emailext (
-                subject: "❌ Tests FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Tests failed. Please check the build logs.\n\nBuild URL: ${env.BUILD_URL}\n\nFailed tests may require investigation.",
-                to: 'vladimir@example.com'
-            )
-        }
-        
-        unstable {
-            echo "⚠️ TESTS ARE UNSTABLE"
         }
     }
 }
